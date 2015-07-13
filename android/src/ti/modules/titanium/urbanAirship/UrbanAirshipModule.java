@@ -1,13 +1,17 @@
+package ti.modules.titanium.urbanairship;
+
 /**
  * Ti.Urbanairship Module
  * Copyright (c) 2010-2013 by Appcelerator, Inc. All Rights Reserved.
  * Please see the LICENSE included with this distribution for details.
  */
 
-package ti.modules.titanium.urbanairship;
 
 import java.util.HashSet;
 import java.util.HashMap;
+import java.util.Set;
+
+import android.os.Bundle;
 
 import org.appcelerator.kroll.KrollModule;
 import org.appcelerator.kroll.KrollProxy;
@@ -18,11 +22,11 @@ import org.appcelerator.titanium.TiProperties;
 
 import android.app.Activity;
 import android.content.Intent;
-import ti.modules.titanium.urbanairship.IntentReceiver;
 
-import com.urbanairship.AirshipConfigOptions;
 import com.urbanairship.UAirship;
-import com.urbanairship.push.PushManager;
+import com.urbanairship.analytics.Analytics;
+import com.urbanairship.google.PlayServicesUtils;
+
 import android.content.pm.PackageManager;
 
 
@@ -33,6 +37,7 @@ public class UrbanAirshipModule extends KrollModule {
 	private static final String ModuleName = "UrbanAirship";
 
 	// Public Events Names
+	@Kroll.constant public static final String EVENT_URBAN_AIRSHIP_READY = "UrbanAirship_Ready";
 	@Kroll.constant public static final String EVENT_URBAN_AIRSHIP_SUCCESS = "UrbanAirship_Success";
 	@Kroll.constant public static final String EVENT_URBAN_AIRSHIP_ERROR = "UrbanAirship_Error";
 	@Kroll.constant public static final String EVENT_URBAN_AIRSHIP_CALLBACK = "UrbanAirship_Callback";
@@ -42,6 +47,7 @@ public class UrbanAirshipModule extends KrollModule {
 	
 	// Flag used so we only check the intent once
 	private boolean checkCurrentIntent = true;
+	private boolean userNotificationsEnabled = false;
 	private static boolean onAppCreateCalled = false;
 		
 	public UrbanAirshipModule() {
@@ -57,14 +63,17 @@ public class UrbanAirshipModule extends KrollModule {
 
 		// MOD-291 - Improve messaging for invalid setup
 		onAppCreateCalled = true;
-		
+
 		// Take off!!!!
 		airshipTakeOff();
 	}
 	
-	@Override
-	public void onStart(Activity activity) {
-		super.onStart(activity);
+	@Kroll.method
+	public void setupActivity() {
+		TiApplication appContext = TiApplication.getInstance();
+		Activity activity = appContext.getCurrentActivity();
+		
+		Log.i(LCAT, "Performing Urban Airship setup for activity...");
 		
 		// MOD-291 - Improve messaging for invalid setup
 		if (!onAppCreateCalled) {
@@ -72,9 +81,31 @@ public class UrbanAirshipModule extends KrollModule {
 			Log.e(LCAT, "Please review the module documentation and/or upgrade to the latest version of the module");
 		}
 		
+		// Handle any Google Play Services errors
+		if (PlayServicesUtils.isGooglePlayStoreAvailable()) {
+			Log.i(LCAT, "Play Services are available!");
+		    PlayServicesUtils.handleAnyPlayServicesError(activity);
+		}
+		
 		if (hasListeners(EVENT_URBAN_AIRSHIP_CALLBACK)) {
 			synthesizeMessageIfNeeded();
 		}
+
+	    // Required for analytics
+        Analytics.activityStarted(activity);
+	}
+	
+	@Override
+	public void onStart(Activity activity) {
+		Log.d(LCAT, "Activity started.");
+		super.onStart(activity);
+		setupActivity();
+ 	}
+	
+	@Override
+	public void onStop(Activity activity) {
+		Log.d(LCAT, "Activity stopped.");
+        Analytics.activityStopped(activity);
 	}
 	
 	@Override
@@ -87,11 +118,10 @@ public class UrbanAirshipModule extends KrollModule {
 	}
 	
 	// Kroll Properties
-	
 	@Kroll.getProperty @Kroll.method
 	public boolean getIsFlying() {
 		try {
-			boolean flying = UAirship.shared().isFlying();
+			boolean flying = UAirship.isFlying();
 			// MOD-291 - Improve messaging for invalid setup
 			if (flying == false) {
 				Log.e(LCAT, "Attempt to access Urban Airship while NOT flying. Check startup and configuration settings.");
@@ -106,7 +136,7 @@ public class UrbanAirshipModule extends KrollModule {
 	@Kroll.getProperty @Kroll.method
 	public Object[] getTags() {
 		if (getIsFlying()) {
-			return PushManager.shared().getTags().toArray();
+			return UAirship.shared().getPushManager().getTags().toArray();
 		}
 		return null;
 	}
@@ -118,14 +148,14 @@ public class UrbanAirshipModule extends KrollModule {
 			for (Object rawTag : rawTags) {
 				tags.add(rawTag.toString());
 			}
-			PushManager.shared().setTags(tags);
+			UAirship.shared().getPushManager().setTags(tags);
 		}
 	}
 
 	@Kroll.getProperty @Kroll.method
 	public String getAlias() {
 		if (getIsFlying()) {
-			return PushManager.shared().getAlias();
+			return UAirship.shared().getPushManager().getAlias();
 		}
 		return null;
 	}
@@ -133,14 +163,14 @@ public class UrbanAirshipModule extends KrollModule {
 	@Kroll.setProperty @Kroll.method
 	public void setAlias(String alias) {
 		if (getIsFlying()) {
-			PushManager.shared().setAlias(alias);
+			UAirship.shared().getPushManager().setAlias(alias);
 		}
 	}
 
 	@Kroll.getProperty @Kroll.method
 	public boolean getPushEnabled() {
 		if (getIsFlying()) {
-			return PushManager.shared().getPreferences().isPushEnabled();
+			return UAirship.shared().getPushManager().isPushEnabled();
 		}
 		return false;
 	}
@@ -148,17 +178,32 @@ public class UrbanAirshipModule extends KrollModule {
 	@Kroll.setProperty @Kroll.method
 	public void setPushEnabled(boolean enabled) {
 		if (getIsFlying()) {
-			if (enabled)
-				PushManager.enablePush();
-			else
-				PushManager.disablePush();
+			UAirship.shared().getPushManager().setPushEnabled(enabled);
+			Log.i(LCAT, "UrbanAirship has been " + (enabled?"enabled":"disabled"));
+	    }
+	}
+	
+	@Kroll.getProperty @Kroll.method
+	public boolean getUserNotificationsEnabled() {
+		if (getIsFlying()) {
+			return userNotificationsEnabled;
+		}
+		return false;
+	}
+	
+	@Kroll.setProperty @Kroll.method
+	public void setUserNotificationsEnabled(boolean enabled) {
+		if (getIsFlying()) {
+			UAirship.shared().getPushManager().setUserNotificationsEnabled(enabled);
+			userNotificationsEnabled = enabled;
+			Log.i(LCAT, "UrbanAirship Notifications have been " + (enabled?"enabled":"disabled"));
 	    }
 	}
 	
 	@Kroll.getProperty @Kroll.method
 	public boolean getSoundEnabled() {
 		if (getIsFlying()) {
-			return PushManager.shared().getPreferences().isSoundEnabled();
+			return UAirship.shared().getPushManager().isSoundEnabled();
 		}
 		return false;
 	}
@@ -166,14 +211,14 @@ public class UrbanAirshipModule extends KrollModule {
 	@Kroll.setProperty @Kroll.method
 	public void setSoundEnabled(boolean enabled) {
 		if (getIsFlying()) {
-			PushManager.shared().getPreferences().setSoundEnabled(enabled);
+			UAirship.shared().getPushManager().setSoundEnabled(enabled);
 		}
 	}
 	
 	@Kroll.getProperty @Kroll.method
 	public boolean getVibrateEnabled() {
 		if (getIsFlying()) {
-			return PushManager.shared().getPreferences().isVibrateEnabled();
+			return UAirship.shared().getPushManager().isVibrateEnabled();
 		}
 		return false;
 	}
@@ -181,25 +226,18 @@ public class UrbanAirshipModule extends KrollModule {
 	@Kroll.setProperty @Kroll.method
 	public void setVibrateEnabled(boolean enabled) {
 		if (getIsFlying()) {
-			PushManager.shared().getPreferences().setVibrateEnabled(enabled);	
+			UAirship.shared().getPushManager().setVibrateEnabled(enabled);	
 		}
 	}
 	
 	@Kroll.getProperty @Kroll.method
 	public String getPushId() {
 		if (getIsFlying()) {
-			return PushManager.shared().getPreferences().getPushId();
+			return UAirship.shared().getPushManager().getChannelId();
 		}
 		return null;
 	}
-	
-	@Kroll.setProperty @Kroll.method
-	public void setPushId(String id) {
-		if (getIsFlying()) {
-			PushManager.shared().getPreferences().setPushId(id);
-		}
-	}
-	
+
 	// Since the module can be unloaded when the activity is closed, the ShowOnAppClick
 	// property is stored in the application properties so that it can be checked
 	// when an intent is received to determine if we should re-launch the activity.
@@ -225,23 +263,34 @@ public class UrbanAirshipModule extends KrollModule {
 	private static void airshipTakeOff() {
 		Log.i(LCAT, "Airship taking off");
 		try {
-			AirshipConfigOptions options = AirshipConfigOptions.loadDefaultOptions(TiApplication.getInstance());
-			
-			// NOTE: In-App Purchasing is not currently supported in this module
-			// Remove this next statement once we implement iap
-			options.iapEnabled = false;
+			//AirshipConfigOptions options = AirshipConfigOptions.loadDefaultOptions(TiApplication.getInstance());
 			
 			// Attempt takeoff
-			UAirship.takeOff(TiApplication.getInstance(), options);
-			
-			// Airship has successfully taken off. Set up the notification handler
-	        PushManager.shared().setIntentReceiver(IntentReceiver.class);	
+			//UAirship.takeOff(TiApplication.getInstance(), options);
+			UAirship.takeOff(TiApplication.getInstance(), new UAirship.OnReadyCallback() {
+				@Override
+	            public void onAirshipReady(UAirship airship) {
+	            	Log.i(LCAT, "Airship ready for configuration");
+	            	//getModule().fireEvent(EVENT_URBAN_AIRSHIP_READY, null);
+	            }
+			});
 	    } catch (Exception e) {
 			Log.e(LCAT, "Error occurred during takeoff!!!");
 		}
 	}
 
 	// Message Handler Processing Helpers
+	private HashMap<String, Object> getIntentExtras(Intent intent) {
+		HashMap<String, Object> retval = new HashMap<String, Object>();
+		Bundle extras = intent.getExtras();
+    	Set<String> keys = extras.keySet();
+    	
+    	for (String key: keys) {
+    		retval.put(key, extras.get(key));
+    	}
+
+		return retval;
+	}
 	
 	private void synthesizeMessageIfNeeded() {
 		// In the case where the activity is being re-started by the IntentReceiver because
@@ -258,7 +307,7 @@ public class UrbanAirshipModule extends KrollModule {
 				Intent intent = activity.getIntent();
 				if (intent != null) {
 					String message = intent.getStringExtra("message");
-					String payload = intent.getStringExtra("payload");
+					HashMap<String, Object> payload = getIntentExtras(intent);
 					if (message != null) {
 						Log.d(LCAT,"User clicked notification (synthesized)");
 						handleReceivedMessage(message, payload, true, false);
@@ -278,7 +327,7 @@ public class UrbanAirshipModule extends KrollModule {
 		return uaModule;
 	}
 
-	private static void launchActivity(String message, String payload) {
+	private static void launchActivity(String message, HashMap<String, Object> payload) {
 		TiApplication appContext = TiApplication.getInstance();
 		
 		// We need to get the class name for the main application activity. That isn't a problem if
@@ -299,8 +348,8 @@ public class UrbanAirshipModule extends KrollModule {
 		
 		appContext.startActivity(launch);		
 	}
-	
-	public static void handleReceivedMessage(String message, String payload, Boolean clicked, Boolean launchIfNeeded) {
+
+	public static void handleReceivedMessage(String message, HashMap<String,Object> payload, Boolean clicked, Boolean launchIfNeeded) {
 	    Log.d(LCAT, "Message: " + message + " Payload: " + payload);
 	    
 	    // Get the currently loaded module object. If the activity has been unloaded then this will
@@ -334,11 +383,15 @@ public class UrbanAirshipModule extends KrollModule {
         	kd.put("deviceToken", apid);
         	kd.put("valid", valid);
         	if (valid) {
+	        	Log.d(LCAT, "UrbanAirship has received a valid android channel!");
         		uaModule.fireEvent(EVENT_URBAN_AIRSHIP_SUCCESS, kd);
         	} else {
+    	    	Log.d(LCAT, "UrbanAirship has received an invalid android channel!");
         		kd.put("error", "Error occurred registering device");
         		uaModule.fireEvent(EVENT_URBAN_AIRSHIP_ERROR, kd);
         	}
         }
+        else
+        	Log.d(LCAT, "UrbanAirship has been unloaded!");
     }
 }

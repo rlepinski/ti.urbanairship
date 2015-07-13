@@ -4,70 +4,110 @@
         xmlns:ti="http://ti.appcelerator.org">
     <android xmlns:android="http://schemas.android.com/apk/res/android">
         <manifest>
-            <uses-sdk android:minSdkVersion="4" android:targetSdkVersion="9"/>
+            <uses-sdk android:minSdkVersion="14" android:targetSdkVersion="22"/>
             <application>
-                <!-- REQUIRED -->
-                <receiver android:name="com.urbanairship.CoreReceiver">
-
-                    <!-- REQUIRED IntentFilter - For Helium and Hybrid -->
-                    <intent-filter>
-                        <action android:name="android.intent.action.BOOT_COMPLETED"/>
-                        <action android:name="android.intent.action.ACTION_SHUTDOWN"/>
-                    </intent-filter>
-                </receiver>
-
-                <!-- REQUIRED for GCM and Hybrid -->
-                <receiver android:name="com.urbanairship.push.GCMPushReceiver"
-                          android:permission="com.google.android.c2dm.permission.SEND">
-                    <!-- Receive the actual message -->
-                    <intent-filter>
-                        <action android:name="com.google.android.c2dm.intent.RECEIVE"/>
-                        <action android:name="com.google.android.c2dm.intent.REGISTRATION"/>
-                        <category android:name="${tiapp.properties['id']}"/>
-                    </intent-filter>
-
-                    <!--  REQUIRED for detecting when the application is upgraded so it can request a new GCM ID -->
-                    <intent-filter>
-                        <action android:name="android.intent.action.PACKAGE_REPLACED"/>
-                        <data android:scheme="package"/>
-                    </intent-filter>
-                </receiver>
-
-                <!-- REQUIRED -->
-                <!-- The 'android:process' parameter is optional. Set it to a value starting
-                                with a colon (:) to make it run in a separate,
-                                private process -->
-                <!--
-                 	 android:process=":com.urbanairship.push.process"/>
-         		-->
-                <service android:name="com.urbanairship.push.PushService" android:label="Push Notification Service"/>
-
-                <!-- REQUIRED FOR GCM -->
-                <service android:name="com.urbanairship.push.PushWorkerService"
-                         android:label="Push Notification Worker Service"/>
-                <service android:name="com.urbanairship.analytics.EventService" android:label="Event Service"/>
+            	<!-- REQUIRED for Google Play Services (GCM)-->
+				<meta-data
+				    android:name="com.google.android.gms.version"
+				    android:value="7571000" />
+				
+				<!-- REQUIRED for PlayServiceUtils.handleAnyPlayServicesError to handle Google Play Services recoverable errors. -->
+				<activity
+				    android:name="com.urbanairship.google.PlayServicesErrorActivity"
+				    android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+				
+				<!-- REQUIRED for GCM -->
+				<receiver exported="true"
+				    android:name="com.urbanairship.push.GCMPushReceiver"
+				    android:permission="com.google.android.c2dm.permission.SEND">
+				
+				    <intent-filter>
+				        <action android:name="com.google.android.c2dm.intent.RECEIVE" />
+				        <action android:name="com.google.android.c2dm.intent.REGISTRATION" />
+				        <category android:name="${tiapp.properties['id']}" />
+				    </intent-filter>
+				</receiver>
+				<!-- REQUIRED for Action.startActivityForResult -->
+				<activity android:name="com.urbanairship.actions.ActionActivity" />
+				
+				<!-- REQUIRED for Urban Airship Push -->
+				<activity android:name="com.urbanairship.CoreActivity" />
+				
+				<!-- REQUIRED for Urban Airship Push. The priority is important to be set lower than the
+				application's push intent receiver in order for the push intent receiver to handle push intents
+				before the core receiver. This allows the application to launch any activities before Urban
+				Airship performs any actions or falls back to launching the application launch intent. -->
+				<receiver android:name="com.urbanairship.CoreReceiver"
+				          android:exported="false">
+				
+				    <intent-filter android:priority="-999">
+				        <action android:name="com.urbanairship.push.OPENED" />
+				        <category android:name="${tiapp.properties['id']}" />
+				    </intent-filter>
+				</receiver>
+				
+				<!-- REQUIRED for Landing Pages
+				    - For more customization details, see com.urbanairship.actions.LandingPageActivity -->
+				<activity
+				    android:name="com.urbanairship.actions.LandingPageActivity"
+				    android:exported="false">
+				
+				    <intent-filter>
+				        <action android:name="com.urbanairship.actions.SHOW_LANDING_PAGE_INTENT_ACTION" />
+				
+				        <data android:scheme="http" />
+				        <data android:scheme="https" />
+				        <data android:scheme="message" />
+				
+				        <category android:name="android.intent.category.DEFAULT" />
+				    </intent-filter>
+				</activity>
+				
+				<!-- REQUIRED for Urban Airship -->
+				<service android:name="com.urbanairship.push.PushService" android:label="Push Notification Service">
+					<intent-filter>
+						<action android:name="com.google.android.c2dm.intent.RECEIVE" />
+					</intent-filter>
+				</service>
+				
+				<!-- Required for analytics -->
+				<service android:name="com.urbanairship.analytics.EventService" android:label="Event Service" />
+				
+				<!-- Required for Actions -->
+				<service android:name="com.urbanairship.actions.ActionService" />
+				
+				<!-- Required for Rich Push -->
+				<service android:name="com.urbanairship.richpush.RichPushUpdateService" />
+				
+				<!-- OPTIONAL for Urban Airship Location (for segments support) -->
+				<!-- service android:name="com.urbanairship.location.LocationService" android:label="Segments Service" / -->
+				
+				<!-- This is required for persisting preferences related to push and location -->
+				<provider
+				    android:name="com.urbanairship.UrbanAirshipProvider"
+				    android:authorities="${tiapp.properties['id']}.urbanairship.provider"
+				    android:permission="${tiapp.properties['id']}.permission.UA_DATA"
+				    android:exported="true"
+				    android:multiprocess="true" />
 
                 <!-- OPTIONAL, if you want to receive push, push opened and registration completed intents -->
-                <receiver android:name="ti.modules.titanium.urbanairship.IntentReceiver"/>
-
-                <!-- This is required for persisting preferences related to push and location -->
-                <provider android:name="com.urbanairship.UrbanAirshipProvider"
-                          android:authorities="${tiapp.properties['id']}.urbanairship.provider"
-                          android:exported="false"
-                          android:multiprocess="true"/>
-                <!-- END OF REQUIRED ITEMS -->
+                <receiver android:name="ti.modules.titanium.urbanairship.IntentReceiver" exported="false">
+					<intent-filter>
+						<action android:name="com.urbanairship.push.CHANNEL_UPDATED" />
+						<action android:name="com.urbanairship.push.OPENED" />
+						<action android:name="com.urbanairship.push.RECEIVED" />
+						<action android:name="com.urbanairship.push.DISMISSED" />
+						
+						<!-- Replace ${applicationId} with the package name for eclipse. -->
+						<category android:name="${tiapp.properties['id']}" />
+					</intent-filter>
+                </receiver>
             </application>
 
             <!-- REQUIRED -->
             <uses-permission android:name="android.permission.INTERNET"/>
             <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
             <uses-permission android:name="android.permission.VIBRATE"/>
-
-            <!-- REQUIRED for C2DM -->
-            <!-- Only this application can receive the messages and registration result -->
-            <permission android:name="${tiapp.properties['id']}.permission.C2D_MESSAGE"
-                        android:protectionLevel="signature"/>
-            <uses-permission android:name="${tiapp.properties['id']}.permission.C2D_MESSAGE"/>
 
             <!-- REQUIRED PERMISSIONS (for Urban Airship GCM) -->
             <uses-permission android:name="android.permission.GET_ACCOUNTS"/>
@@ -77,13 +117,16 @@
             <uses-permission android:name="com.google.android.c2dm.permission.RECEIVE"/>
             <!-- This app has permission to register with GCM and receive message -->
 
-            <!-- REQUIRED for Helium -->
-            <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
-            <!--  OPTIONAL - This permission is only necessary if your app has multiple processes -->
-            <!--  <uses-permission android:name="android.permission.BROADCAST_STICKY" /> -->
-
             <!--  REQUIRED for wifi wake functionality -->
             <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+            
+			<!-- This app has permission to register with GCM and receive message -->
+			<permission android:name="${tiapp.properties['id']}.permission.C2D_MESSAGE" android:protectionLevel="signature" />
+			<uses-permission android:name="${tiapp.properties['id']}.permission.C2D_MESSAGE" />
+			<!-- The two elements above ensure that only this application can receive the messages and registration result -->
+
+			<permission android:name="${tiapp.properties['id']}.permission.UA_DATA" android:protectionLevel="signature" />
+			<uses-permission android:name="${tiapp.properties['id']}.permission.UA_DATA" />
         </manifest>
     </android>
 </ti:module>

@@ -3,68 +3,79 @@
  * Copyright (c) 2010-2013 by Appcelerator, Inc. All Rights Reserved.
  * Please see the LICENSE included with this distribution for details.
  */
-
 package ti.modules.titanium.urbanairship;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.Set;
 import java.util.HashMap;
+import java.util.Set;
 
-import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.content.Intent;
+import android.os.Bundle;
 import android.util.Log;
 
-import com.urbanairship.push.PushManager;
+import com.urbanairship.push.BaseIntentReceiver;
+import com.urbanairship.push.PushMessage;
 
-public class IntentReceiver extends BroadcastReceiver {
-	private static final String LCAT = "UrbanAirshipModule";
-	
-	// New in the latest version of Urban Airship is that the extra string has been deprecated
-	// and extra data is now delivered as a set of key-value pairs. This method builds a 
-	// dictionary of these values to be sent back to the user.
-	private HashMap<String, String> getPushExtras(Intent intent) {
-		Set<String> keys = intent.getExtras().keySet();
-		
-		// We want to ignore all of the UA-specific keys that are sent down with the data
-		List<String> ignoredKeys = (List<String>)Arrays.asList(
-				"collapse_key", // c2dm collapse key
-				"from",         // c2dm sender
-				PushManager.EXTRA_NOTIFICATION_ID,  // int id of generated notification
-				PushManager.EXTRA_PUSH_ID,          // internal UA push id
-				PushManager.EXTRA_ALERT);           // ignore alert
-		
-		HashMap<String, String> kd = new HashMap<String, String>();
-		for (String key : keys) {
-			if (!ignoredKeys.contains(key)) {
-				kd.put(key, intent.getStringExtra(key));
-			}
-		}
-		
-		return kd;
-	}
-	
+public class IntentReceiver extends BaseIntentReceiver {
+	private static final String TAG = "UrbanAirshipModule_IntentReceiver";
+
 	@Override
-	public void onReceive(Context context, Intent intent) {
-		Log.i(LCAT, "Received intent: " + intent.toString());
-		String action = intent.getAction();
+    protected void onChannelRegistrationSucceeded(Context context, String channelId) {
+        Log.i(TAG, "Channel registration updated. Channel Id:" + channelId + ".");
+        UrbanAirshipModule.handleRegistrationComplete(channelId, true);
+    }
 
-		if (action.equals(PushManager.ACTION_PUSH_RECEIVED)) {
-		    String message = intent.getStringExtra(PushManager.EXTRA_ALERT);
-		    HashMap<String, String> extras = getPushExtras(intent);
+    @Override
+    protected void onChannelRegistrationFailed(Context context) {
+        Log.i(TAG, "Channel registration failed.");
+        UrbanAirshipModule.handleRegistrationComplete(null, false);
+    }
+    
+    private HashMap<String, Object> getPayloadFromPushMessage(PushMessage msg) {
+    	HashMap<String, Object> retval = new HashMap<String, Object>();
+    	Bundle pushBundle = msg.getPushBundle();
+    	Set<String> keys = pushBundle.keySet();
+    	
+    	for (String key: keys) {
+    		retval.put(key, pushBundle.get(key));
+    	}
+    	
+    	return retval;
+    }
 
-		    UrbanAirshipModule.handleReceivedMessage(message, extras.toString(), false, false);		    
-		} else if (action.equals(PushManager.ACTION_NOTIFICATION_OPENED)) {
-		    String message = intent.getStringExtra(PushManager.EXTRA_ALERT);
-		    HashMap<String, String> extras = getPushExtras(intent);
-		    
-			UrbanAirshipModule.handleReceivedMessage(message, extras.toString(), true, true);
-		} else if (action.equals(PushManager.ACTION_REGISTRATION_FINISHED)) {
-			String apid = intent.getStringExtra(PushManager.EXTRA_APID);
-			Boolean valid = intent.getBooleanExtra(PushManager.EXTRA_REGISTRATION_VALID, false);
-			
-            UrbanAirshipModule.handleRegistrationComplete(apid, valid);           
-		}
-	}
+    @Override
+    protected void onPushReceived(Context context, PushMessage message, int notificationId) {
+    	HashMap<String, Object> msg = getPayloadFromPushMessage(message);
+        Log.i(TAG, "Received push notification. Alert: " + message.getAlert() + ". Notification ID: " + notificationId);
+        UrbanAirshipModule.handleReceivedMessage(message.getAlert(), msg, false, true);
+    }
+
+    @Override
+    protected void onBackgroundPushReceived(Context context, PushMessage message) {
+    	HashMap<String, Object> msg = getPayloadFromPushMessage(message);
+        Log.i(TAG, "Received background push message: " + msg);
+        UrbanAirshipModule.handleReceivedMessage(message.getAlert(), msg, false, false);
+    }
+
+    @Override
+    protected boolean onNotificationOpened(Context context, PushMessage message, int notificationId) {
+    	HashMap<String, Object> msg = getPayloadFromPushMessage(message);
+        Log.i(TAG, "User clicked notification. Alert: " + message.getAlert());
+
+        UrbanAirshipModule.handleReceivedMessage(message.getAlert(), msg, true, true);
+        // Return false to let UA handle launching the launch activity
+        return true;
+    }
+
+    @Override
+    protected boolean onNotificationActionOpened(Context context, PushMessage message, int notificationId, String buttonId, boolean isForeground) {
+        Log.i(TAG, "User clicked notification button. Button ID: " + buttonId + " Alert: " + message.getAlert());
+
+        // Return false to let UA handle launching the launch activity
+        return false;
+    }
+
+    @Override
+    protected void onNotificationDismissed(Context context, PushMessage message, int notificationId) {
+        Log.i(TAG, "Notification dismissed. Alert: " + message.getAlert() + ". Notification ID: " + notificationId);
+    }
 }
