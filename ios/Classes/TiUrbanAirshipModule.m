@@ -15,16 +15,19 @@
 #import "UAirship.h"
 #import "UAConfig.h"
 #import "UAPush.h"
+#import "UAPushNotificationHandler.h"
 
-#import "UAInboxPushHandler.h"
-#import "UAInboxUI.h"
-#import "UAInboxNavUI.h"
-#import "UAInbox.h"
-#import "UAInboxMessageList.h"
+@interface TiUrbanairshipModule()
+@property (nonatomic, strong) UAPushNotificationHandler *pushHandler;
+@end
 
 @implementation TiUrbanairshipModule
 
 @synthesize autoResetBadge, notificationsEnabled;
+
+-(NSString*) EVENT_URBAN_AIRSHIP_CALLBACK { return @"push_notification_callback"; }
+-(NSString*) EVENT_URBAN_AIRSHIP_SUCCESS { return @"push_registration_success"; }
+-(NSString*) EVENT_URBAN_AIRSHIP_ERROR { return @"push_registration_error"; }
 
 #pragma mark Internal
 
@@ -50,9 +53,51 @@
 	
 	// Default is automatically reset badge
 	autoResetBadge = YES;
+    self.pushHandler = nil;
 	
 	NSLog(@"[INFO] %@ loaded",self);
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self startUrbanAirship];
+    });
 }
+
+-(void)shutdown:(id)sender
+{
+    // you *must* call the superclass
+    [super shutdown:sender];
+}
+
+#pragma mark Internal Memory Management
+
+-(void)didReceiveMemoryWarning:(NSNotification*)notification
+{
+    // optionally release any resources that can be dynamically
+    // reloaded once memory is available - such as caches
+    [super didReceiveMemoryWarning:notification];
+}
+
+#pragma mark Listener Notifications
+
+-(void)_listenerAdded:(NSString *)type count:(int)count
+{
+    if (count == 1 && [type isEqualToString:@"my_event"])
+    {
+        // the first (of potentially many) listener is being added
+        // for event named 'my_event'
+    }
+}
+
+-(void)_listenerRemoved:(NSString *)type count:(int)count
+{
+    if (count == 0 && [type isEqualToString:@"my_event"])
+    {
+        // the last listener called for event named 'my_event' has
+        // been removed, we can optionally clean up any resources
+        // since no body is listening at this point for that event
+    }
+}
+
 
 // This is called when the application receives the applicationWillResignActive message
 -(void)suspend:(id)sender
@@ -63,11 +108,6 @@
 	if (!initialized) {
 		NSLog(@"[DEBUG] Ignoring notification -- not initialized yet");
 		return;
-	}
-	
-	UAInbox *inbox = [UAInbox shared];
-	if (inbox != nil && inbox.messageList != nil && inbox.messageList.unreadCount >= 0) {
-		[[UIApplication sharedApplication] setApplicationIconBadgeNumber:inbox.messageList.unreadCount];
 	}
 }
 
@@ -84,27 +124,13 @@
     [self handleAutoBadgeReset];
 }
 
--(void)shutdown:(id)sender
-{
-	// you *must* call the superclass
-	[super shutdown:sender];
-}
-
 - (void)checkIfSimulator {
     if ([[[UIDevice currentDevice] model] rangeOfString:@"Simulator"].location != NSNotFound) {
 		NSLog(@"[ERROR] You can see UAInbox in the simulator, but you will not be able to receive push notifications");
     }
 }
 
-+ (void)load
-{
-    // Register to receive a notification for the application launching
-    // This mechanism allows the module to perform actions during application startup
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(onAppCreate:)
-                                                 name:@"UIApplicationDidFinishLaunchingNotification" object:nil];
-}
-
-+(void)onAppCreate:(NSNotification *)notification
+-(void)startUrbanAirship
 {
 	// SUPER WARNING!!!!!!
 	// This initialization method MUST be run on the UI thread. The setup of UAInboxUI and UAInboxNavUI must occur
@@ -117,119 +143,48 @@
 
 	NSLog(@"[DEBUG] Urban Airship taking off");
 
-	// Create Airship singleton that's used to talk to Urban Airship servers.
+    // Set log level for debugging config loading (optional)
+    // It will be set to the value in the loaded config upon takeOff
+    [UAirship setLogLevel:UALogLevelTrace];
+
+    // Create Airship singleton that's used to talk to Urban Airship servers.
 	UAConfig *config = [UAConfig defaultConfig];
 
 	// Disable the automatic integration support in UA for backward compatibility
-	config.automaticSetupEnabled = NO;
+	// config.automaticSetupEnabled = YES;
 
 	// Call takeOff (which creates the UAirship singleton)
 	[UAirship takeOff:config];
 }
 
--(void)initializeIfNeeded
-{
-    if (initialized) {
-        // Do nothin'
-        return;
-    }
-	
-	[self checkIfSimulator];
-
-	// [MOD-238] Automatically reset badge count at startup
-    [self handleAutoBadgeReset];
-	
-    // Config Inbox behaviour before UAInboxPushHandler since it may need it
-    // when launching from notification
-	
-	// Default inbox style is modal
-	[UAInbox useCustomUI:[UAInboxUI class]];
-	[UAInbox shared].pushHandler.delegate = [UAInboxUI shared];
-
-	// Get the root view controller from the app
-	[UAInboxUI shared].inboxParentController = [[TiApp app] controller];
-	[UAInboxUI shared].useOverlay = NO;
-
-	initialized = YES;
-    [self updateUAServer];
-
-	NSLog(@"inited");
-}
-
-#pragma mark Cleanup
-
-#pragma mark Internal Memory Management
-
--(void)didReceiveMemoryWarning:(NSNotification*)notification
-{
-	// optionally release any resources that can be dynamically
-	// reloaded once memory is available - such as caches
-	[super didReceiveMemoryWarning:notification];
-}
-
 #pragma Public APIs
 
--(void)registerDevice:(id)arg
+-(NSArray*)getUserNotificationTypes
 {
-	ENSURE_SINGLE_ARG(arg, NSString);
-	ENSURE_UI_THREAD_1_ARG(arg);
-	
-    // NOTE: We are not using the UA registerForRemoteNotificationTypes method since we rely on the developer
-    // calling the Ti.Network.registerForRemoteNotifications method. The following call will generate an
-    // error message in the log from UA about missing notification types.    
-    //    [[UAPush shared] registerDeviceToken:token];
-    // For now we can use the following call to register the device token. I have made a request to Urban Airship
-    // to continue support for registering a device token without using their UAPush registration mechanism.
-    // We could consider switching over to the UAPush mechanism but that would mean a change to existing user
-    // applications. Perhaps we could switch over with a new API and start deprecating the current method.
+    NSMutableArray *retval = [[NSMutableArray alloc] init];
+    UIUserNotificationType types = [UAirship push].userNotificationTypes;
     
-    // The token received in the success callback to 'Ti.Network.registerForPushNotifications' is a hex-encode
-    // string. We need to convert it back to it's byte format as an NSData object.
-    NSMutableData *token = [[NSMutableData alloc] init];
-    unsigned char whole_byte;
-    char byte_chars[3] = { '\0', '\0', '\0' };
-    int i;
-    for (i=0; i<[arg length]/2; i++) {
-        byte_chars[0] = [arg characterAtIndex:i*2];
-        byte_chars[1] = [arg characterAtIndex:i*2+1];
-        whole_byte = strtol(byte_chars, NULL, 16);
-        [token appendBytes:&whole_byte length:1];
+    if (types & UIUserNotificationTypeAlert);
+        [retval addObject:NUMINT(UIUserNotificationTypeAlert)];
+    if (types & UIUserNotificationTypeBadge);
+        [retval addObject:NUMINT(UIUserNotificationTypeBadge)];
+    if (types & UIUserNotificationTypeSound);
+        [retval addObject:NUMINT(UIUserNotificationTypeSound)];
+    
+    return retval;
+}
+
+-(void)setUserNotificationTypes:(id)args
+{
+    ENSURE_ARRAY(args);
+    UIUserNotificationType types = UIUserNotificationTypeNone;
+    
+    UA_LDEBUG(@"Setting Push Notification Types...");
+    for (int i=0; i<[args count]; ++i) {
+        types |= (UIUserNotificationType)[args objectAtIndex: i];
     }
-    [[UAPush shared] registerDeviceToken:token];
-
-   	[self initializeIfNeeded];
-
-    [self updateUAServer];
-}
-	
-// [MOD-214] Add unregisterDevice method
--(void)unregisterDevice:(id)arg
-{
-	if (initialized) {
-        [UAPush shared].pushEnabled = NO;
-	}
-}
-
--(void)displayInbox:(id)args
-{
-	ENSURE_UI_THREAD_1_ARG(args);
-	
-	[self initializeIfNeeded];		
-
-	// User can control whether we animate or not with this argument
-	BOOL animated = [TiUtils boolValue:@"animated" properties:args def:YES];
-
-	UIViewController* viewController = [[TiApp app] controller];
-	[UAInbox displayInboxInViewController:viewController animated:animated];
-}
-
--(void)hideInbox:(id)arg
-{
-	ENSURE_UI_THREAD_1_ARG(arg);
-	
-	[self initializeIfNeeded];
-	
-	[UAInbox quitInbox];
+    
+    [UAirship push].userNotificationTypes = types;
 }
 
 -(void)handleNotification:(id)arg
@@ -239,20 +194,25 @@
 	
 	ENSURE_UI_THREAD_1_ARG(arg);	
 	
-	[self initializeIfNeeded];
+	//[self initializeIfNeeded];
 	
 	id userInfo = [arg objectAtIndex:0];
+    NSNumber* inForeground = [arg objectAtIndex:1];
+    NSNumber* wasLaunched = [arg objectAtIndex:2];
+    
 	ENSURE_DICT(userInfo);
+    
+    NSMutableDictionary* data = [NSMutableDictionary dictionaryWithDictionary:userInfo];
+    [data setValue:inForeground forKey:@"inForeground"];
+    [data setValue:wasLaunched forKey:@"wasLaunched"];
 	
 	NSLog(@"[DEBUG] Urban Airship received notification");
+    [self fireEvent:[self EVENT_URBAN_AIRSHIP_CALLBACK] withObject:data];
 	
-	[UAInboxPushHandler handleNotification:userInfo];
-    
-	// [MOD-238] Reset badge after push received
     [self handleAutoBadgeReset];
 }
 
--(BOOL)notificationsEnabled
+-(BOOL)pushEnabled
 {
     return [[UIApplication sharedApplication] enabledRemoteNotificationTypes] != UIRemoteNotificationTypeNone;
 }
@@ -266,14 +226,14 @@
 -(void)updateUAServer
 {
     if (initialized) {
-        [[UAPush shared] updateRegistration];
+        [[UAirship push] updateRegistration];
     }
 }
 
 -(void)handleAutoBadgeReset
 {
     if (autoResetBadge) {
-        [[UAPush shared] resetBadge];
+        [[UAirship push] resetBadge];
         [self updateUAServer];
     }
 }
@@ -286,28 +246,28 @@
 {
 	NSInteger autoBadge = [TiUtils boolValue:value def:NO];
 	
-    [UAPush shared].autobadgeEnabled = autoBadge;
+    [UAirship push].autobadgeEnabled = autoBadge;
     
     [self updateUAServer];
 }
 
 -(BOOL)getAutoBadge
 {
-    return [UAPush shared].autobadgeEnabled;
+    return [UAirship push].autobadgeEnabled;
 }
 
 -(void)setBadgeNumber:(id)value
 {
 	NSInteger badgeNumber = [TiUtils intValue:value def:0];
 	
-	[[UAPush shared] setBadgeNumber:badgeNumber];
+	[[UAirship push] setBadgeNumber:badgeNumber];
     
     [self updateUAServer]; 
 }
 
 -(void)resetBadge:(id)args
 {
-	[[UAPush shared] resetBadge];
+	[[UAirship push] resetBadge];
     
     [self updateUAServer];
 }
@@ -316,33 +276,109 @@
 {
     ENSURE_ARRAY(value);
 
-    [UAPush shared].tags = value;
+    [UAirship push].tags = value;
 
     [self updateUAServer];
 }
 
 -(NSArray*)getTags
 {
-    return [UAPush shared].tags;
+    return [UAirship push].tags;
 }
 
--(void)setAlias:(id)value
+-(NSString*)getPushId
 {
-    NSString* alias = [TiUtils stringValue:value];
-           
-    [UAPush shared].alias = alias;
+    return [[UAirship push] channelID];
+}
+
+-(BOOL)getUserNotificationsEnabled
+{
+    return NUMBOOL([UAirship push].userPushNotificationsEnabled);
+}
+
+-(void)setUserNotificationsEnabled:(id)value
+{
+    ENSURE_SINGLE_ARG(value, NSNumber);
     
-    [self updateUAServer]; 
+    BOOL val = NO;
+    if ([value intValue] != 0)
+        val = YES;
+    
+    if ((val == YES) && (self.pushHandler == nil)) {
+        UA_LDEBUG(@"Setting up the notification handlers...");
+        [UAirship push].pushNotificationDelegate = self;
+        
+        // Set a delegate to handle incoming push notifications. Useful for displaying
+        // notification when they are recieved in the foreground.
+        // self.pushHandler = [[UAPushNotificationHandler alloc] init];
+        // [UAirship push].pushNotificationDelegate = self.pushHandler;
+        [UAirship push].registrationDelegate = self;
+    }
+    
+    UA_LDEBUG(@"Setting userNotificationEnabled....");
+    [UAirship push].userPushNotificationsEnabled = val;
+    
+    [self updateUAServer];
 }
 
--(NSString*)getAlias
-{
-    return [UAPush shared].alias;
+#pragma UAPushNotificationDelegate
+
+- (void)receivedForegroundNotification:(NSDictionary *)notification
+                fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
+    
+    UA_LDEBUG(@"Received a notification while the app was already in the foreground");
+    
+    // Do something with your customData JSON, then entire notification is also available
+    NSMutableArray* data = [NSMutableArray arrayWithObject:notification];
+    [data addObject:[NSNumber numberWithBool:YES]];
+    [data addObject:[NSNumber numberWithBool:NO]];
+    [self handleNotification:data];
+    
+    // Be sure to call the completion handler with a UIBackgroundFetchResult
+    completionHandler(UIBackgroundFetchResultNoData);
 }
 
--(NSString*)getUsername
+- (void)launchedFromNotification:(NSDictionary *)notification
+          fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler{
+    
+    UA_LDEBUG(@"The application was launched or resumed from a notification");
+    
+    // Do something when launched via a notification
+    NSMutableArray* data = [NSMutableArray arrayWithObject:notification];
+    [data addObject:[NSNumber numberWithBool:NO]];
+    [data addObject:[NSNumber numberWithBool:YES]];
+    [self handleNotification:data];
+    
+    // Be sure to call the completion handler with a UIBackgroundFetchResult
+    completionHandler(UIBackgroundFetchResultNoData);
+}
+
+- (void)receivedBackgroundNotification:(NSDictionary *)notification
+                fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
+    
+    // Do something with the notification in the background
+    NSMutableArray* data = [NSMutableArray arrayWithObject:notification];
+    [data addObject:[NSNumber numberWithBool:NO]];
+    [data addObject:[NSNumber numberWithBool:NO]];
+    [self handleNotification:data];
+    
+    // Be sure to call the completion handler with a UIBackgroundFetchResult
+    completionHandler(UIBackgroundFetchResultNoData);
+}
+
+#pragma UARegistrationDelegate
+- (void)registrationSucceededForChannelID:(NSString *)channelID deviceToken:(NSString *)deviceToken
 {
-    return [UAUser defaultUser].username;
+    NSMutableDictionary *data = [[NSMutableDictionary alloc] init];
+    [data setObject:deviceToken forKey:@"iOSToken"];
+    [data setObject:[[UAirship push] channelID] forKey:@"deviceToken"];
+    [self fireEvent:[self EVENT_URBAN_AIRSHIP_SUCCESS] withObject:data];
+}
+
+- (void)registrationFailed
+{
+    NSMutableDictionary *data = [[NSMutableDictionary alloc] init];
+    [self fireEvent: [self EVENT_URBAN_AIRSHIP_ERROR] withObject:data];
 }
 
 @end

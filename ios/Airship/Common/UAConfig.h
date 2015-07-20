@@ -1,5 +1,5 @@
 /*
- Copyright 2009-2013 Urban Airship Inc. All rights reserved.
+ Copyright 2009-2015 Urban Airship Inc. All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
@@ -7,11 +7,11 @@
  1. Redistributions of source code must retain the above copyright notice, this
  list of conditions and the following disclaimer.
 
- 2. Redistributions in binaryform must reproduce the above copyright notice,
+ 2. Redistributions in binary form must reproduce the above copyright notice,
  this list of conditions and the following disclaimer in the documentation
- and/or other materials provided withthe distribution.
+ and/or other materials provided with the distribution.
 
- THIS SOFTWARE IS PROVIDED BY THE URBAN AIRSHIP INC``AS IS'' AND ANY EXPRESS OR
+ THIS SOFTWARE IS PROVIDED BY THE URBAN AIRSHIP INC ``AS IS'' AND ANY EXPRESS OR
  IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO
  EVENT SHALL URBAN AIRSHIP INC OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
@@ -42,12 +42,12 @@
 /**
  * The current app key (resolved using the inProduction flag).
  */
-@property (weak, nonatomic, readonly) NSString *appKey;
+@property (nonatomic, readonly) NSString *appKey;
 
 /**
  * The current app secret (resolved using the inProduction flag).
  */
-@property (weak, nonatomic, readonly) NSString *appSecret;
+@property (nonatomic, readonly) NSString *appSecret;
 
 /**
  * The current log level for the library's UA_L<level> macros (resolved using the inProduction flag).
@@ -58,13 +58,13 @@
  * The production status of this application. This may be set directly, or it may be determined
  * automatically if the detectProvisioningMode flag is set to `YES`.
  */
-@property (nonatomic, assign) BOOL inProduction;
+@property (nonatomic, assign, getter=isInProduction) BOOL inProduction;
 
 /**
  * Toggles Urban Airship analytics. Defaults to `YES`. If set to `NO`, many UA features will not be
  * available to this application.
  */
-@property (nonatomic, assign) BOOL analyticsEnabled;
+@property (nonatomic, assign, getter=isAnalyticsEnabled) BOOL analyticsEnabled;
 
 ///---------------------------------------------------------------------------------------
 /// @name Configuration Values
@@ -107,6 +107,7 @@
 @property (nonatomic, assign) UALogLevel productionLogLevel;
 
 
+
 /**
  * The size in MB for the UA Disk Cache.  Defaults to 100.
  *
@@ -129,7 +130,14 @@
  * in application:didFinishLaunchingWithOptions: and forward all notification-related app delegate
  * calls to UAPush and UAInbox.
  */
-@property (nonatomic, assign) BOOL automaticSetupEnabled;
+@property (nonatomic, assign, getter=isAutomaticSetupEnabled) BOOL automaticSetupEnabled;
+
+/**
+ * An array of UAWhitelist entry strings.
+ *
+ * @note See UAWhitelist for pattern entry syntax.
+ */
+@property (nonatomic, strong) NSArray *whitelist;
 
 ///---------------------------------------------------------------------------------------
 /// @name Advanced Configuration Options
@@ -137,20 +145,22 @@
 
 
 /**
- * Apps may be set to self-configure based on the APS-environment set in the embedded.mobileprovision file.
- * If `YES`, the inProduction value will be determined at runtime by reading the provisioning profile. If
- * `NO`, the inProduction flag may be set directly or using the AirshipConfig.plist file. Defaults to
- * `YES` for safety so that the production keys will always be used if the profile cannot be read in a released app.
- * Simulator builds do not include profile, so this flag does not have any effect in cases where there is not
- * a profile present. It will fall back to the inProduction property as set in code or a .plist file.
+ * Apps may be set to self-configure based on the APS-environment set in the
+ * embedded.mobileprovision file by using detectProvisioningMode. If
+ * detectProvisioningMode is set to `YES`, the inProduction value will
+ * be determined at runtime by reading the provisioning profile. If it is set to
+ * `NO` (the default), the inProduction flag may be set directly or by using the
+ * AirshipConfig.plist file.
+ *
+ * When this flag is enabled, the inProduction flag defaults to `YES` for safety
+ * so that the production keys will always be used if the profile cannot be read
+ * in a released app. Simulator builds do not include the profile, and the
+ * detectProvisioningMode flag does not have any effect in cases where a profile
+ * is not present. When a provisioning file is not present, the app will fall
+ * back to the inProduction property as set in code or the AirshipConfig.plist
+ * file.
  */
 @property (nonatomic, assign) BOOL detectProvisioningMode;
-
-/**
- * If set to `YES`, the app will clear all keychain user information every time the app starts.
- * This is designed for development mode only.
- */
-@property (nonatomic, assign) BOOL clearKeychain;
 
 
 /**
@@ -158,11 +168,43 @@
  */
 @property (nonatomic, copy) NSString *deviceAPIURL;
 
+
 /**
  * The Urban Airship analytics API url. This option is reserved for internal debugging.
  */
 @property (nonatomic, copy) NSString *analyticsURL;
 
+/**
+ * The Urban Airship landing page content url. This option is reserved for internal debugging.
+ */
+@property (nonatomic, copy) NSString *landingPageContentURL;
+
+
+/**
+ * If set to `YES`, the Urban Airship user will be cleared if the application is
+ * restored on a different device from an encrypted backup.
+ *
+ * Defaults to `NO`.
+ */
+@property (nonatomic, assign) BOOL clearUserOnAppRestore;
+
+/**
+ * If set to `YES`, the application will clear the previous named user ID on a
+ * re-install. Defaults to `NO`.
+ */
+@property (nonatomic, assign) BOOL clearNamedUserOnAppRestore;
+
+/**
+ * Flag indicating whether channel capture feature is enabled or not.
+ *
+ * Defaults to `YES`.
+ */
+@property (nonatomic, assign, getter=isChannelCaptureEnabled) BOOL channelCaptureEnabled;
+
+/**
+ * Dictionary of custom config values.
+ */
+@property (nonatomic, copy) NSDictionary *customConfig;
 
 ///---------------------------------------------------------------------------------------
 /// @name Factory Methods
@@ -170,17 +212,20 @@
 
 /**
  * Creates an instance using the values set in the `AirshipConfig.plist` file.
+ * @return A UAConfig with values from `AirshipConfig.plist` file.
  */
 + (UAConfig *)defaultConfig;
 
 /**
  * Creates an instance using the values found in the specified `.plist` file.
  * @param path The path of the specified file.
+ * @return A UAConfig with values from the specified file.
  */
 + (UAConfig *)configWithContentsOfFile:(NSString *)path;
 
 /**
  * Creates an instance with empty values.
+ * @return A UAConfig with empty values.
  */
 + (UAConfig *)config;
 
