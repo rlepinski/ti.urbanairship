@@ -369,9 +369,22 @@
 #pragma UARegistrationDelegate
 - (void)registrationSucceededForChannelID:(NSString *)channelID deviceToken:(NSString *)deviceToken
 {
+    NSString* channelId = [self getPushId];
+    
+    //Don't let the device token be null on a simulator...
+    if (deviceToken == nil)
+    {
+        CFUUIDRef uuid = CFUUIDCreate(NULL);
+        CFStringRef uuidString = CFUUIDCreateString(NULL, uuid);
+        CFRelease(uuid);
+        deviceToken = (__bridge NSString*)uuidString;
+        if (channelId == nil)
+            channelId = [deviceToken copy];
+    }
+    
     NSMutableDictionary *data = [[NSMutableDictionary alloc] init];
     [data setObject:deviceToken forKey:@"iOSToken"];
-    [data setObject:[[UAirship push] channelID] forKey:@"deviceToken"];
+    [data setObject:channelId forKey:@"deviceToken"];
     [self fireEvent:[self EVENT_URBAN_AIRSHIP_SUCCESS] withObject:data];
 }
 
