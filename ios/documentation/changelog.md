@@ -1,5 +1,9 @@
 # Change Log
 <pre>
+v6.1.2	Updated to Urban Airship library version 6.1.2
+		Altered module versioning scheme to match that of the native library
+		Altered API to use nearly the same interface as android version.
+
 v3.1.0  [TIMOB-17928] Updated to build for 64-bit
 
 v3.0.0  [TIMODOPEN-264] Upgraded to Urban Airship version 3.0.2 for iOS
@@ -7,9 +11,9 @@ v3.0.0  [TIMODOPEN-264] Upgraded to Urban Airship version 3.0.2 for iOS
         BREAKING CHANGE: airshipconfig.plist property names have changed
 
 v1.3.2  [MOD-1268] Building with 2.1.3.GA and open sourcing
-	
+
 v1.3.1  [MOD-1087] Added attribution
-	
+
 v1.3.0  [MOD-804] Added username, alias, tags, and isFlying properties
         [MOD-804] Upgraded to Urban Airship 1.3.2 library
 

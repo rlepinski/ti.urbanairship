@@ -1,5 +1,9 @@
 # Change Log
 <pre>
+v6.0.2  Upgraded to support the latest Urban Airship Android library (Push Notifications only)
+        Altered version numbering to match version numbering of native library
+        Included v22 of google_play_services.jar (Known conflicts: ti.map, workaround: copy jar into ti.map)
+
 v2.3.2  [MOD-1268] Open sourcing
 	
 v2.3.1  [MOD-1087][MOD-1104] Added attribution and built with 2.1.3.GA to support x86 devices
