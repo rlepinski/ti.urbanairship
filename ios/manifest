@@ -15,4 +15,4 @@ name: urbanairship
 moduleid: ti.urbanairship
 guid: d00fbe22-e01d-4ca5-b11b-133155320625
 platform: iphone
-minsdk: 3.5.1.GA
+minsdk: 3.5.0.GA
