@@ -16,9 +16,9 @@ import com.urbanairship.push.BaseIntentReceiver;
 import com.urbanairship.push.PushMessage;
 
 public class IntentReceiver extends BaseIntentReceiver {
-	private static final String TAG = "UrbanAirshipModule_IntentReceiver";
+    private static final String TAG = "UrbanAirshipModule_IntentReceiver";
 
-	@Override
+    @Override
     protected void onChannelRegistrationSucceeded(Context context, String channelId) {
         Log.i(TAG, "Channel registration updated. Channel Id:" + channelId + ".");
         UrbanAirshipModule.handleRegistrationComplete(channelId, true);
@@ -29,36 +29,36 @@ public class IntentReceiver extends BaseIntentReceiver {
         Log.i(TAG, "Channel registration failed.");
         UrbanAirshipModule.handleRegistrationComplete(null, false);
     }
-    
+
     private HashMap<String, Object> getPayloadFromPushMessage(PushMessage msg) {
-    	HashMap<String, Object> retval = new HashMap<String, Object>();
-    	Bundle pushBundle = msg.getPushBundle();
-    	Set<String> keys = pushBundle.keySet();
-    	
-    	for (String key: keys) {
-    		retval.put(key, pushBundle.get(key));
-    	}
-    	
-    	return retval;
+        HashMap<String, Object> retval = new HashMap<String, Object>();
+        Bundle pushBundle = msg.getPushBundle();
+        Set<String> keys = pushBundle.keySet();
+
+        for (String key : keys) {
+            retval.put(key, pushBundle.get(key));
+        }
+
+        return retval;
     }
 
     @Override
     protected void onPushReceived(Context context, PushMessage message, int notificationId) {
-    	HashMap<String, Object> msg = getPayloadFromPushMessage(message);
+        HashMap<String, Object> msg = getPayloadFromPushMessage(message);
         Log.i(TAG, "Received push notification. Alert: " + message.getAlert() + ". Notification ID: " + notificationId);
         UrbanAirshipModule.handleReceivedMessage(message.getAlert(), msg, false, true);
     }
 
     @Override
     protected void onBackgroundPushReceived(Context context, PushMessage message) {
-    	HashMap<String, Object> msg = getPayloadFromPushMessage(message);
+        HashMap<String, Object> msg = getPayloadFromPushMessage(message);
         Log.i(TAG, "Received background push message: " + msg);
         UrbanAirshipModule.handleReceivedMessage(message.getAlert(), msg, false, false);
     }
 
     @Override
     protected boolean onNotificationOpened(Context context, PushMessage message, int notificationId) {
-    	HashMap<String, Object> msg = getPayloadFromPushMessage(message);
+        HashMap<String, Object> msg = getPayloadFromPushMessage(message);
         Log.i(TAG, "User clicked notification. Alert: " + message.getAlert());
 
         UrbanAirshipModule.handleReceivedMessage(message.getAlert(), msg, true, true);
