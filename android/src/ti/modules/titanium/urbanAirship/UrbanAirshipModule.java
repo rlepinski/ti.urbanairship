@@ -23,6 +23,7 @@ import org.appcelerator.titanium.TiProperties;
 import android.app.Activity;
 import android.content.Intent;
 
+import com.urbanairship.Autopilot;
 import com.urbanairship.UAirship;
 import com.urbanairship.analytics.Analytics;
 import com.urbanairship.google.PlayServicesUtils;
@@ -69,7 +70,7 @@ public class UrbanAirshipModule extends KrollModule {
         onAppCreateCalled = true;
 
         // Take off!!!!
-        airshipTakeOff();
+        Autopilot.automaticTakeOff(TiApplication.getInstance());
     }
 
     @Kroll.method
@@ -279,25 +280,6 @@ public class UrbanAirshipModule extends KrollModule {
     }
 
     // Private Helper Methods
-
-    private static void airshipTakeOff() {
-        Log.i(LCAT, "Airship taking off");
-        try {
-            //AirshipConfigOptions options = AirshipConfigOptions.loadDefaultOptions(TiApplication.getInstance());
-
-            // Attempt takeoff
-            //UAirship.takeOff(TiApplication.getInstance(), options);
-            UAirship.takeOff(TiApplication.getInstance(), new UAirship.OnReadyCallback() {
-                @Override
-                public void onAirshipReady(UAirship airship) {
-                    Log.i(LCAT, "Airship ready for configuration");
-                    //getModule().fireEvent(EVENT_URBAN_AIRSHIP_READY, null);
-                }
-            });
-        } catch (Exception e) {
-            Log.e(LCAT, "Error occurred during takeoff!!!");
-        }
-    }
 
     // Message Handler Processing Helpers
     private HashMap<String, Object> getIntentExtras(Intent intent) {

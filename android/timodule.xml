@@ -6,6 +6,9 @@
         <manifest>
             <uses-sdk android:minSdkVersion="14" android:targetSdkVersion="22"/>
             <application>
+
+                <meta-data android:name="com.urbanairship.autopilot" android:value="ti.modules.titanium.urbanairship.TiAutopilot" />
+
             	<!-- REQUIRED for Google Play Services (GCM)-->
 				<meta-data
 				    android:name="com.google.android.gms.version"
