@@ -1,3 +1,8 @@
+Deprecated
+==========
+Use the offical Urban Airship plugin instead - https://github.com/urbanairship/titanium-module
+
+
 ti.urbanairship [![Build Status](https://travis-ci.org/appcelerator-modules/ti.urbanairship.svg)](https://travis-ci.org/appcelerator-modules/ti.urbanairship)
 ===============
 
